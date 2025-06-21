@@ -6,7 +6,7 @@ import time
 app = Flask(__name__)
 
 # Load YOLOv8 nano model (you can download weights automatically)
-model = YOLO('yolov5n.pt')
+model = YOLO('yolov8n.pt')
 
 # Replace with your Akaso camera's stream URL
 stream_url = "rtsp://192.168.1.1/live"
@@ -18,29 +18,33 @@ def generate_frames():
         if not success:
             break
 
-        # Run YOLO inference
-        small_frame = cv2.resize(frame, (160, 120))  # or even (160, 120)
-        results = model(small_frame)[0]  # get first (and only) result
+        # Run YOLO inference directly on the full-size frame
+        results = model(frame, verbose=False)[0]
 
         # Draw bounding boxes and labels
         for box in results.boxes:
             x1, y1, x2, y2 = map(int, box.xyxy[0])
             cls_id = int(box.cls[0])
-            conf = box.conf[0]
+            conf = float(box.conf[0])
             label = f"{model.names[cls_id]} {conf:.2f}"
 
-            cv2.rectangle(frame, (x1, y1), (x2, y2), (0,255,0), 2)
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
             cv2.putText(frame, label, (x1, y1 - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,0), 2)
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
 
-        # Encode frame to JPEG
+        # Encode frame as JPEG
         ret, buffer = cv2.imencode('.jpg', frame)
+        if not ret:
+            continue
+
         frame_bytes = buffer.tobytes()
 
-        # Yield frame as multipart HTTP response
+        # Yield as multipart response
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
-        time.sleep(0.5)
+
+        # Helps keep the capture loop efficient without hard sleep
+        cv2.waitKey(100)
 
 @app.route('/')
 def index():
